@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProcessOps AI v3.8 - Dynamic SCADA & Multi-Shift Process ERP</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkbg: '#080c14',
+                        cardbg: '#111827',
+                        cardborder: '#1f293d',
+                        neonGreen: '#10b981',
+                        neonCyan: '#06b6d4',
+                        neonAmber: '#f59e0b',
+                        neonRose: '#ef4444',
+                        accentBlue: '#3b82f6'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #080c14;
+            color: #e2e8f0;
+        }
+
+        .code-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(31, 41, 61, 0.9);
+        }
+
+        .glass-panel-hover:hover {
+            border-color: rgba(6, 182, 212, 0.4);
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.1);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #080c14; }
+        ::-webkit-scrollbar-thumb { background: #1f293d; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #06b6d4; }
+
+        /* SCADA Animations */
+        @keyframes conveyorDash {
+            0% { stroke-dashoffset: 0; }
+            100% { stroke-dashoffset: -40; }
+        }
+
+        .conveyor-belt-dash {
+            stroke-dasharray: 8, 8;
+            animation: conveyorDash 0.6s linear infinite;
+        }
+        .paused-anim { animation-play-state: paused !important; }
+
+        @keyframes fluidFlow {
+            0% { stroke-dashoffset: 60; }
+            100% { stroke-dashoffset: 0; }
+        }
+
+        .pipe-flow-anim {
+            stroke-dasharray: 12, 12;
+            animation: fluidFlow 1.2s linear infinite;
+        }
+
+        @keyframes spinImpeller {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .spinning-impeller {
+            transform-origin: 200px 90px;
+            animation: spinImpeller 0.8s linear infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+        }
+
+        .estop-active {
+            animation: pulseGlow 0.8s infinite;
+            background: radial-gradient(circle, #ef4444 0%, #7f1d1d 100%) !important;
+            box-shadow: 0 0 25px #ef4444 !important;
+        }
+
+        .zone-highlight {
+            transition: all 0.5s ease-in-out;
+            stroke-width: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden text-slate-200">
+
+    <!-- TOP HEADER / CONTROL BAR -->
+    <header class="glass-panel sticky top-0 z-50 px-4 py-2.5 border-b border-cardborder flex flex-wrap items-center justify-between gap-3">
+        <!-- Brand & System Title -->
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid fa-microchip"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="font-bold text-lg tracking-wide text-white">ProcessOps <span class="text-cyan-400">AI</span></h1>
+                    <span class="px-2 py-0.5 text-[10px] font-bold rounded bg-cyan-950 text-cyan-400 border border-cyan-800/80 code-font">v3.8 DYNAMIC PRO</span>
+                </div>
+                <p class="text-[11px] text-slate-400">Autonomous IIoT Plant Execution & Multi-Shift SCADA Orchestrator</p>
+            </div>
+        </div>
+
+        <!-- Plant Global Indicators -->
+        <div class="hidden lg:flex items-center space-x-4 text-xs code-font">
+            <div id="statusPill" class="flex items-center space-x-2 bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                <span class="text-slate-400">SCADA:</span>
+                <span id="globalStatusText" class="text-emerald-400 font-bold tracking-wide">AUTO STREAMING</span>
+            </div>
+
+            <!-- MULTI-SHIFT SELECTOR -->
+            <div class="bg-slate-900/90 px-3 py-1.5 rounded-lg border border-cyan-800/80 flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-cyan-400"></i>
+                <span class="text-slate-400">SHIFT:</span>
+                <select id="headerShiftSelect" onchange="changeShift(this.value)" class="bg-slate-950 text-cyan-300 font-bold rounded px-2 py-0.5 border border-slate-700 focus:outline-none">
+                    <option value="shiftA">Shift A (Morning - S. Jenkins)</option>
+                    <option value="shiftB">Shift B (Afternoon - M. Vance)</option>
+                    <option value="shiftC">Shift C (Night - E. Rostova)</option>
+                </select>
+            </div>
+
+            <div class="bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400">OEE:</span>
+                <span id="headerOeeVal" class="text-emerald-400 font-bold ml-1">91.2%</span>
+            </div>
+            <div class="bg-slate-900/90 px-3 py-1.5 rounded-lg border border-slate-800">
+                <span class="text-slate-400">ZONE:</span>
+                <span id="headerZoneTag" class="text-cyan-400 font-bold ml-1">Zone 2: Reaction</span>
+            </div>
+        </div>
+
+        <!-- Master E-STOP & Quick Actions -->
+        <div class="flex items-center space-x-3">
+            <button onclick="openCustomShiftModal()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5">
+                <i class="fa-solid fa-plus text-cyan-400"></i> New Shift
+            </button>
+            <button id="estopBtn" onclick="toggleEstop()" class="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-rose-600/30 transition flex items-center gap-2 border border-rose-400">
+                <i class="fa-solid fa-power-off"></i> <span id="estopText">EMERGENCY STOP</span>
+            </button>
+            <button onclick="switchTab('alerts')" class="relative p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
+                <i class="fa-solid fa-bell text-sm"></i>
+                <span id="alertBadge" class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center animate-pulse">2</span>
+            </button>
+            <div class="flex items-center space-x-2 pl-2 border-l border-slate-800">
+                <div class="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 font-bold text-xs" id="opAvatarTag">
+                    SJ
+                </div>
+                <div class="hidden sm:block text-left text-[11px]">
+                    <div class="font-bold text-slate-200" id="opNameTag">Sarah Jenkins</div>
+                    <div class="text-slate-500 text-[9px] code-font" id="opRoleTag">Shift A Lead</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- NAVIGATION BAR -->
+    <nav class="bg-slate-900/95 border-b border-cardborder px-4 overflow-x-auto">
+        <div class="flex space-x-1 min-w-max text-xs font-semibold py-2">
+            <button onclick="switchTab('scada')" id="nav-scada" class="nav-tab active-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-cyan-400 bg-cyan-950/80 border border-cyan-800/60 transition">
+                <i class="fa-solid fa-network-wired"></i> SCADA & Dynamic Live Map
+            </button>
+            <button onclick="switchTab('shifts')" id="nav-shifts" class="nav-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                <i class="fa-solid fa-users-gear"></i> Multi-Shift Operations & Comparison
+            </button>
+            <button onclick="switchTab('equipment')" id="nav-equipment" class="nav-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                <i class="fa-solid fa-brain"></i> Predictive Diagnostics & AI Health
+            </button>
+            <button onclick="switchTab('materials')" id="nav-materials" class="nav-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                <i class="fa-solid fa-cubes"></i> Material BOM & Smart Stock
+            </button>
+            <button onclick="switchTab('alerts')" id="nav-alerts" class="nav-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                <i class="fa-solid fa-triangle-exclamation"></i> Live Anomaly Alerts
+            </button>
+            <button onclick="switchTab('database')" id="nav-database" class="nav-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                <i class="fa-solid fa-database"></i> Database Explorer & Export
+            </button>
+            <button onclick="switchTab('versions')" id="nav-versions" class="nav-tab px-3.5 py-2 rounded-lg flex items-center gap-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition">
+                <i class="fa-solid fa-code-branch"></i> Version Roadmap (v3.8)
+            </button>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 p-4 lg:p-6 max-w-[1920px] w-full mx-auto space-y-6">
+
+        <!-- ==================== TAB 1: SCADA & DYNAMIC LIVE MAP ==================== -->
+        <div id="tab-scada" class="tab-content space-y-6">
+            
+            <!-- Zone Switcher Strip -->
+            <div class="glass-panel p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2 text-xs font-bold text-slate-300">
+                    <i class="fa-solid fa-location-crosshairs text-cyan-400"></i>
+                    <span>PLANT ZONE FOCUS:</span>
+                </div>
+                <div class="flex flex-wrap gap-2 text-xs code-font">
+                    <button onclick="setZone('zone1')" id="zoneBtn1" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:border-cyan-500 transition">Zone 1: Raw Silos</button>
+                    <button onclick="setZone('zone2')" id="zoneBtn2" class="px-3 py-1.5 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold">Zone 2: Reaction & Mixing</button>
+                    <button onclick="setZone('zone3')" id="zoneBtn3" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:border-cyan-500 transition">Zone 3: Packager Line</button>
+                    <button onclick="setZone('zone4')" id="zoneBtn4" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:border-cyan-500 transition">Zone 4: Outfeed Warehouse</button>
+                </div>
+            </div>
+
+            <!-- Real-time Metric Strip -->
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div class="glass-panel p-3.5 rounded-xl border-l-4 border-l-cyan-500">
+                    <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-1">Shift Volume Total</div>
+                    <div class="text-2xl font-bold code-font text-white" id="metric-units">14,820 <span class="text-xs text-slate-500 font-normal">pts</span></div>
+                    <div class="text-[10px] text-emerald-400 mt-1 flex items-center gap-1" id="metric-rate"><i class="fa-solid fa-arrow-trend-up"></i> +125 pts/min</div>
+                </div>
+
+                <div class="glass-panel p-3.5 rounded-xl border-l-4 border-l-emerald-500">
+                    <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-1">Conveyor Speed</div>
+                    <div class="text-2xl font-bold code-font text-emerald-400" id="metric-speed">42.0 <span class="text-xs text-slate-400 font-normal">m/min</span></div>
+                    <div class="text-[10px] text-slate-400 mt-1">RPM: <span id="metric-rpm" class="text-slate-200 font-semibold">1,420</span></div>
+                </div>
+
+                <div class="glass-panel p-3.5 rounded-xl border-l-4 border-l-amber-500">
+                    <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-1">Mixer M-01 Temp</div>
+                    <div class="text-2xl font-bold code-font text-amber-400" id="metric-temp">68.2 <span class="text-xs text-slate-400 font-normal">°C</span></div>
+                    <div class="text-[10px] text-amber-400 mt-1" id="metric-temp-status"><i class="fa-solid fa-wave-square"></i> Dynamic Stream</div>
+                </div>
+
+                <div class="glass-panel p-3.5 rounded-xl border-l-4 border-l-blue-500">
+                    <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-1">Pump Vibration</div>
+                    <div class="text-2xl font-bold code-font text-blue-400" id="metric-vib">2.12 <span class="text-xs text-slate-400 font-normal">mm/s</span></div>
+                    <div class="text-[10px] text-emerald-400 mt-1">ISO Band 1 Normal</div>
+                </div>
+
+                <div class="glass-panel p-3.5 rounded-xl border-l-4 border-l-indigo-500">
+                    <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-1">Steam Pressure</div>
+                    <div class="text-2xl font-bold code-font text-indigo-300" id="metric-pressure">14.1 <span class="text-xs text-slate-400 font-normal">PSI</span></div>
+                    <div class="text-[10px] text-slate-400 mt-1">Safety Cap: 18.0 PSI</div>
+                </div>
+
+                <div class="glass-panel p-3.5 rounded-xl border-l-4 border-l-emerald-400">
+                    <div class="text-[10px] text-slate-400 font-medium uppercase tracking-wider mb-1">Active Shift OEE</div>
+                    <div class="text-2xl font-bold code-font text-emerald-400" id="metric-oee">91.2%</div>
+                    <div class="text-[10px] text-slate-400 mt-1" id="metric-shift-tag">Shift A Morning</div>
+                </div>
+            </div>
+
+            <!-- SCADA Interactive Diagram Panel & Control Deck -->
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                
+                <!-- Left 3 Columns: Interactive Dynamic P&ID SVG Diagram -->
+                <div class="glass-panel rounded-2xl p-5 lg:col-span-3 flex flex-col justify-between relative overflow-hidden">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-diagram-next text-cyan-400"></i> Dynamic Real-Time Process P&ID Diagram Map
+                            </h2>
+                            <p class="text-xs text-slate-400" id="scadaZoneSubtitle">Showing Zone 2: Reactor Vessel M-01 & Steam Exchange Pipeline</p>
+                        </div>
+                        <div class="flex items-center gap-2 text-xs code-font">
+                            <span class="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded border border-slate-800"><span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> Dynamic Telemetry</span>
+                            <span class="flex items-center gap-1.5 bg-slate-900 px-2.5 py-1 rounded border border-slate-800"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Outfeed Motion</span>
+                        </div>
+                    </div>
+
+                    <!-- SVG P&ID Canvas -->
+                    <div class="bg-slate-950/90 rounded-xl p-4 border border-slate-800/80 overflow-x-auto relative">
+                        <svg viewBox="0 0 960 320" class="w-full min-w-[800px] h-auto">
+                            <defs>
+                                <pattern id="scadaGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+                                    <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255, 255, 255, 0.02)" stroke-width="1"/>
+                                </pattern>
+                                <linearGradient id="fluidGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#06b6d4" />
+                                    <stop offset="100%" stop-color="#3b82f6" />
+                                </linearGradient>
+                            </defs>
+                            <rect width="100%" height="100%" fill="url(#scadaGrid)" />
+
+                            <!-- ZONE 1 HIGHLIGHT RECT -->
+                            <rect id="zone1Highlight" x="20" y="30" width="160" height="180" rx="12" fill="none" stroke="#06b6d4" stroke-width="0" class="zone-highlight"/>
+                            <!-- ZONE 2 HIGHLIGHT RECT -->
+                            <rect id="zone2Highlight" x="260" y="30" width="340" height="230" rx="12" fill="none" stroke="#06b6d4" stroke-width="2" class="zone-highlight"/>
+                            <!-- ZONE 3 HIGHLIGHT RECT -->
+                            <rect id="zone3Highlight" x="690" y="110" width="250" height="180" rx="12" fill="none" stroke="#06b6d4" stroke-width="0" class="zone-highlight"/>
+
+                            <!-- PIPE NETWORK 1: Raw Tank to Mixer -->
+                            <path d="M 120 130 L 220 130 L 220 180 M 220 180 L 280 180" fill="none" stroke="#1e293b" stroke-width="12" stroke-linecap="round"/>
+                            <path id="pipeFlow1" d="M 120 130 L 220 130 L 220 180 M 220 180 L 280 180" fill="none" stroke="url(#fluidGrad)" stroke-width="6" class="pipe-flow-anim"/>
+
+                            <!-- PIPE NETWORK 2: Mixer to Boiler/Heat Exchanger -->
+                            <path d="M 380 180 L 480 180" fill="none" stroke="#1e293b" stroke-width="12"/>
+                            <path id="pipeFlow2" d="M 380 180 L 480 180" fill="none" stroke="#06b6d4" stroke-width="6" class="pipe-flow-anim"/>
+
+                            <!-- ZONE 1: Raw Polymer Feed Silo -->
+                            <g transform="translate(30, 40)">
+                                <rect x="0" y="0" width="90" height="150" rx="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+                                <rect id="svgTankLevel" x="6" y="40" width="78" height="104" rx="6" fill="#0284c7" opacity="0.4"/>
+                                <text x="45" y="25" fill="#e2e8f0" font-size="11" font-weight="bold" text-anchor="middle">SILO TANK A</text>
+                                <text x="45" y="85" fill="#38bdf8" font-size="12" font-weight="bold" text-anchor="middle" id="svgTankPct">78%</text>
+                                <text x="45" y="100" fill="#94a3b8" font-size="9" text-anchor="middle">Raw Polymer</text>
+                            </g>
+
+                            <!-- VALVE V-101 -->
+                            <g transform="translate(160, 110)" class="cursor-pointer" onclick="toggleValve('v101')">
+                                <polygon points="0,0 20,10 0,20" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+                                <polygon points="20,0 0,10 20,20" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+                                <circle cx="10" cy="10" r="4" fill="#10b981" id="v101Indicator"/>
+                                <text x="10" y="-5" fill="#94a3b8" font-size="9" text-anchor="middle">V-101</text>
+                            </g>
+
+                            <!-- ZONE 2: High-Shear Reactor Mixer -->
+                            <g transform="translate(280, 110)">
+                                <rect x="0" y="0" width="100" height="140" rx="10" fill="#0f172a" stroke="#475569" stroke-width="2" id="svgMixerBody"/>
+                                <rect x="20" y="-15" width="60" height="15" rx="3" fill="#334155"/>
+                                <text x="50" y="30" fill="#e2e8f0" font-size="11" font-weight="bold" text-anchor="middle">MIXER M-01</text>
+                                
+                                <!-- Rotating Blade Impeller -->
+                                <g class="spinning-impeller" id="impellerGroup">
+                                    <circle cx="200" cy="90" r="22" fill="none" stroke="#06b6d4" stroke-width="2" stroke-dasharray="6,6"/>
+                                    <path d="M 185 90 L 215 90 M 200 75 L 200 105" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+                                </g>
+
+                                <text x="50" y="120" fill="#f59e0b" font-size="10" font-weight="bold" text-anchor="middle" id="svgMixerTemp">68.2 °C</text>
+                                <circle cx="85" cy="20" r="5" fill="#10b981" id="svgMixerLed"/>
+                            </g>
+
+                            <!-- ZONE 2 B: Steam Heat Exchanger / Boiler -->
+                            <g transform="translate(480, 110)">
+                                <rect x="0" y="0" width="110" height="140" rx="10" fill="#0f172a" stroke="#6366f1" stroke-width="2"/>
+                                <path d="M 20 30 Q 55 10 90 30 Q 55 50 20 70 Q 55 90 90 110" fill="none" stroke="#6366f1" stroke-width="3"/>
+                                <text x="55" y="25" fill="#e2e8f0" font-size="11" font-weight="bold" text-anchor="middle">BOILER HX-2</text>
+                                <text x="55" y="125" fill="#818cf8" font-size="10" font-weight="bold" text-anchor="middle" id="svgBoilerPressure">14.1 PSI</text>
+                            </g>
+
+                            <!-- PIPE NETWORK 3: Boiler to Packager Line -->
+                            <path d="M 590 180 L 680 180 L 680 230 M 680 230 L 710 230" fill="none" stroke="#1e293b" stroke-width="12"/>
+                            <path id="pipeFlow3" d="M 590 180 L 680 180 L 680 230 M 680 230 L 710 230" fill="none" stroke="#10b981" stroke-width="6" class="pipe-flow-anim"/>
+
+                            <!-- ZONE 3: Outfeed Conveyor Belt & Automated Packager -->
+                            <g transform="translate(710, 215)">
+                                <rect x="0" y="20" width="220" height="14" rx="7" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+                                <line id="scadaBeltLine" x1="5" y1="27" x2="215" y2="27" stroke="#10b981" stroke-width="5" class="conveyor-belt-dash"/>
+                                <circle cx="10" cy="27" r="5" fill="#475569"/>
+                                <circle cx="110" cy="27" r="5" fill="#475569"/>
+                                <circle cx="210" cy="27" r="5" fill="#475569"/>
+                                <text x="110" y="50" fill="#64748b" font-size="10" text-anchor="middle">Packaging Line #1 (Outfeed)</text>
+
+                                <!-- Packager Robot Station -->
+                                <rect x="80" y="-80" width="80" height="90" rx="8" fill="#0f172a" stroke="#06b6d4" stroke-width="2"/>
+                                <text x="120" y="-55" fill="#06b6d4" font-size="10" font-weight="bold" text-anchor="middle">ROBO-PACK</text>
+                                <text x="120" y="-35" fill="#10b981" font-size="12" font-weight="bold" text-anchor="middle" id="svgPackerCount">14,820</text>
+                            </g>
+
+                            <!-- Animated Moving Finished Box Container -->
+                            <g id="scadaBox" transform="translate(720, 210)">
+                                <rect x="-10" y="-12" width="20" height="16" rx="3" fill="#f59e0b" stroke="#78350f" stroke-width="1.5"/>
+                            </g>
+                        </svg>
+                    </div>
+
+                    <!-- SCADA Live Status Footer -->
+                    <div class="mt-4 flex flex-wrap items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-800">
+                        <div class="flex items-center gap-4">
+                            <span>PLC Driver: <strong class="text-emerald-400">Siemens S7-1500 (OPC-UA)</strong></span>
+                            <span>Latency: <strong class="text-cyan-400" id="latencyVal">12ms</strong></span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span>Loop Control:</span>
+                            <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 font-bold border border-emerald-800">CLOSED LOOP AUTO STREAM</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right 1 Column: Interactive Control Console -->
+                <div class="glass-panel rounded-2xl p-5 space-y-5">
+                    <div>
+                        <h3 class="font-bold text-white text-sm mb-1 flex items-center gap-2">
+                            <i class="fa-solid fa-sliders text-cyan-400"></i> SCADA Override Console
+                        </h3>
+                        <p class="text-xs text-slate-400">Manual plant actuator overrides</p>
+                    </div>
+
+                    <!-- Mode Toggle (Auto / Manual) -->
+                    <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2">
+                        <label class="text-xs text-slate-300 font-semibold block">Control Mode</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="modeAutoBtn" onclick="setControlMode('AUTO')" class="py-1.5 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-xs">AUTO</button>
+                            <button id="modeManualBtn" onclick="setControlMode('MANUAL')" class="py-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 font-bold text-xs">MANUAL</button>
+                        </div>
+                    </div>
+
+                    <!-- Conveyor Speed Slider Override -->
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-300 font-semibold">Conveyor Belt Speed Target</span>
+                            <span id="sliderValText" class="text-cyan-400 font-bold code-font">42.0 m/min</span>
+                        </div>
+                        <input type="range" id="speedSlider" min="0" max="60" value="42" step="0.5" oninput="updateSpeedSlider(this.value)" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+                        <div class="flex justify-between text-[10px] text-slate-500 code-font">
+                            <span>0 m/min (Stop)</span>
+                            <span>60 m/min (Max)</span>
+                        </div>
+                    </div>
+
+                    <!-- Actuator Valve Buttons -->
+                    <div class="space-y-2">
+                        <label class="text-xs text-slate-300 font-semibold block">Silo Actuator Valves</label>
+                        <div class="space-y-2">
+                            <button onclick="toggleValve('v101')" id="valveBtn101" class="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-between border border-slate-700">
+                                <span><i class="fa-solid fa-valve mr-2 text-cyan-400"></i> Valve V-101 (Polymer)</span>
+                                <span id="v101StateTag" class="px-2 py-0.5 text-[10px] rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold">OPEN</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Fault Injections -->
+                    <div class="pt-2 border-t border-slate-800 space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold block">Fault Injection Testing</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="triggerFault('mixerOverheat')" class="py-2 px-2 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 text-[11px] font-semibold border border-rose-800/80 transition text-center">
+                                <i class="fa-solid fa-fire mr-1"></i> Overheat Mixer
+                            </button>
+                            <button onclick="triggerFault('conveyorJam')" class="py-2 px-2 rounded-lg bg-amber-950/80 hover:bg-amber-900 text-amber-300 text-[11px] font-semibold border border-amber-800/80 transition text-center">
+                                <i class="fa-solid fa-triangle-exclamation mr-1"></i> Jam Conveyor
+                            </button>
+                        </div>
+                        <button onclick="resetSimulation()" class="w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition">
+                            <i class="fa-solid fa-rotate-right mr-1"></i> Clear & Reset SCADA State
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Dynamic Live Telemetry Stream Chart & OEE Breakdown -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- OEE Gauge Card -->
+                <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="font-bold text-white text-base flex items-center gap-2">
+                                <i class="fa-solid fa-gauge-simple-high text-cyan-400"></i> OEE Index: <span id="shiftOeeName">Shift A</span>
+                            </h3>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800" id="oeeRatingBadge">WORLD CLASS</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mb-4">Real-time overall equipment effectiveness for active shift</p>
+                    </div>
+
+                    <!-- Big Circular Gauge Representation -->
+                    <div class="flex items-center justify-center my-1">
+                        <div class="relative flex items-center justify-center w-36 h-36 rounded-full border-4 border-emerald-500/30 bg-slate-900/80 shadow-lg shadow-emerald-500/10">
+                            <div class="text-center">
+                                <div class="text-3xl font-extrabold text-emerald-400 code-font" id="oeeScoreBig">91.2%</div>
+                                <div class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Shift OEE Score</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2.5 text-xs mt-3">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-slate-300">Availability (Uptime)</span>
+                                <span class="font-bold text-emerald-400 code-font" id="availVal">94.2%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div class="bg-emerald-500 h-full rounded-full" id="availBar" style="width: 94.2%;"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-slate-300">Performance Rate</span>
+                                <span class="font-bold text-cyan-400 code-font" id="perfVal">96.8%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div class="bg-cyan-400 h-full rounded-full" id="perfBar" style="width: 96.8%;"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-slate-300">Quality Yield</span>
+                                <span class="font-bold text-indigo-400 code-font" id="qualVal">98.9%</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                <div class="bg-indigo-400 h-full rounded-full" id="qualBar" style="width: 98.9%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-Time Dynamic Telemetry Stream Chart -->
+                <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col justify-between">
+                    <div class="flex justify-between items-center mb-2">
+                        <div>
+                            <h3 class="font-bold text-white text-base flex items-center gap-2">
+                                <i class="fa-solid fa-chart-line text-cyan-400"></i> Dynamic Live Sensor Telemetry Stream
+                            </h3>
+                            <p class="text-xs text-slate-400">Continuous noisy sinusoidal stream: Mixer Temp (°C) vs. Vibration (mm/s x10)</p>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs code-font">
+                            <span class="text-cyan-400 font-semibold"><i class="fa-solid fa-circle text-[8px] mr-1"></i> Mixer Temp</span>
+                            <span class="text-emerald-400 font-semibold"><i class="fa-solid fa-circle text-[8px] mr-1"></i> Vibration</span>
+                        </div>
+                    </div>
+                    <div class="relative w-full h-60">
+                        <canvas id="scadaTelemetryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- ==================== TAB 2: MULTI-SHIFT OPERATIONS & COMPARISON ==================== -->
+        <div id="tab-shifts" class="tab-content hidden space-y-6">
+            <div class="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-users-gear text-cyan-400"></i> Multi-Shift Operations & Cross-Shift Analytics
+                    </h2>
+                    <p class="text-xs text-slate-400">Track, compare, and manage performance across Shift A, Shift B, and Shift C</p>
+                </div>
+                <button onclick="openCustomShiftModal()" class="px-3.5 py-2 rounded-xl bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 text-xs font-bold flex items-center gap-2 transition">
+                    <i class="fa-solid fa-plus"></i> Instantiate Custom Shift
+                </button>
+            </div>
+
+            <!-- Shift Summary Cards Row -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6" id="shiftCardsGrid">
+                <!-- Populated via JS -->
+            </div>
+
+            <!-- Cross-Shift Performance Comparison Chart -->
+            <div class="glass-panel p-6 rounded-2xl space-y-4">
+                <div class="flex justify-between items-center flex-wrap gap-2">
+                    <h3 class="font-bold text-white text-base flex items-center gap-2">
+                        <i class="fa-solid fa-chart-column text-cyan-400"></i> Cross-Shift Output & OEE Comparison
+                    </h3>
+                    <div class="text-xs code-font text-slate-400">Metrics aggregated live across 24-hour window</div>
+                </div>
+                <div class="relative w-full h-72">
+                    <canvas id="shiftComparisonChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Shift Handover & Event Logger -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Form -->
+                <div class="glass-panel p-6 rounded-2xl space-y-4">
+                    <h3 class="font-bold text-white text-base flex items-center gap-2">
+                        <i class="fa-solid fa-pen-to-square text-cyan-400"></i> Shift Handover Logger
+                    </h3>
+                    <p class="text-xs text-slate-400">Log operator observations or shift handovers</p>
+
+                    <form id="shiftLogForm" onsubmit="handleShiftLogSubmit(event)" class="space-y-4 text-xs">
+                        <div>
+                            <label class="block text-slate-300 mb-1 font-medium">Operator Name / ID</label>
+                            <input type="text" id="logOperator" required value="Sarah Jenkins (OP-402)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-300 mb-1 font-medium">Target Shift</label>
+                                <select id="logShift" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                    <option value="shiftA">Shift A (Morning)</option>
+                                    <option value="shiftB">Shift B (Afternoon)</option>
+                                    <option value="shiftC">Shift C (Night)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-slate-300 mb-1 font-medium">Event Type</label>
+                                <select id="logEventType" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                    <option value="Routine Handover">Routine Handover</option>
+                                    <option value="Unplanned Downtime">Unplanned Downtime</option>
+                                    <option value="Planned Cleaning">Planned Cleaning</option>
+                                    <option value="Quality Hold">Quality Hold</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-300 mb-1 font-medium">Target Machine / Asset</label>
+                            <select id="logMachine" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="Plant Wide">Plant Wide General</option>
+                                <option value="Conveyor Belt 01">Conveyor Belt 01</option>
+                                <option value="High-Shear Mixer M-01">High-Shear Mixer M-01</option>
+                                <option value="Steam Boiler HX-2">Steam Boiler HX-2</option>
+                                <option value="Packaging Line #1">Packaging Line #1</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-300 mb-1 font-medium">Detailed Log Notes</label>
+                            <textarea id="logNotes" rows="3" required placeholder="Log detailed shift notes..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+
+                        <button type="submit" class="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 font-bold text-white text-xs shadow-lg shadow-cyan-600/30 transition">
+                            <i class="fa-solid fa-paper-plane mr-1"></i> Commit Shift Log Entry
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Table -->
+                <div class="glass-panel p-6 rounded-2xl lg:col-span-2">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-bold text-white text-base flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-cyan-400"></i> Active Shift Handover Logs
+                        </h3>
+                        <span class="text-xs text-slate-400 code-font">Total Logs: <span id="logCount">3</span></span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs text-slate-300">
+                            <thead class="bg-slate-900/90 text-slate-400 uppercase code-font border-b border-slate-800">
+                                <tr>
+                                    <th class="p-3">Time</th>
+                                    <th class="p-3">Shift</th>
+                                    <th class="p-3">Operator</th>
+                                    <th class="p-3">Event</th>
+                                    <th class="p-3">Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/80 code-font" id="shiftLogTableBody">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 3: PREDICTIVE DIAGNOSTICS & AI HEALTH ==================== -->
+        <div id="tab-equipment" class="tab-content hidden space-y-6">
+            <div class="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-brain text-cyan-400"></i> AI Predictive Maintenance & Machine Diagnostic Suite
+                    </h2>
+                    <p class="text-xs text-slate-400">Continuous FFT vibration spectrum analysis & remaining useful life (RUL) regression</p>
+                </div>
+                <button onclick="runAiDiagnosticScan()" class="px-3.5 py-2 rounded-xl bg-cyan-950 text-cyan-300 border border-cyan-800 hover:bg-cyan-900 text-xs font-semibold flex items-center gap-2 transition">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Run Deep Learning Failure Scan
+                </button>
+            </div>
+
+            <!-- Machinery Health Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="equipmentGrid">
+                <!-- Populated dynamically via JS -->
+            </div>
+
+            <!-- Deep Diagnostics & FFT Spectrum Analysis Panel -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- FFT Spectrum Chart -->
+                <div class="glass-panel p-5 rounded-2xl lg:col-span-2">
+                    <div class="flex justify-between items-center mb-3">
+                        <div>
+                            <h3 class="font-bold text-white text-base flex items-center gap-2">
+                                <i class="fa-solid fa-wave-square text-cyan-400"></i> Fast Fourier Transform (FFT) Vibration Spectrum
+                            </h3>
+                            <p class="text-xs text-slate-400">Target Asset: <span id="fftAssetTitle" class="text-cyan-400 font-bold">High-Shear Mixer M-01</span></p>
+                        </div>
+                        <span class="text-xs code-font px-2 py-1 rounded bg-slate-800 text-slate-300">0 - 1000 Hz</span>
+                    </div>
+                    <div class="relative w-full h-64">
+                        <canvas id="fftChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- ML Regression Curve / RUL Panel -->
+                <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                    <div>
+                        <h3 class="font-bold text-white text-base mb-1 flex items-center gap-2">
+                            <i class="fa-solid fa-chart-area text-indigo-400"></i> RUL Regression Failure Curve
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">Predicted Remaining Useful Life degradation curve</p>
+                    </div>
+
+                    <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-3">
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-400">Current Health Index:</span>
+                            <span class="font-bold text-amber-400 code-font">74% (Degrading)</span>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-400">Estimated Failure Window:</span>
+                            <span class="font-bold text-rose-400 code-font">110 Operating Hours</span>
+                        </div>
+                        <div class="flex justify-between text-xs">
+                            <span class="text-slate-400">Dominant Failure Mode:</span>
+                            <span class="font-bold text-slate-200">Bearing Outer Race Fatigue</span>
+                        </div>
+                    </div>
+
+                    <button onclick="dispatchWorkOrder('EQ-102')" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-lg shadow-cyan-500/20 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-wrench"></i> Dispatch Automated Work Order
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 4: MATERIAL BOM & SMART STOCK ==================== -->
+        <div id="tab-materials" class="tab-content hidden space-y-6">
+            <div class="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-cubes text-cyan-400"></i> Material Consumption & Dynamic BOM Engine
+                    </h2>
+                    <p class="text-xs text-slate-400">Bill of Materials deduction synced live with SCADA production counters</p>
+                </div>
+                <div class="flex items-center gap-3">
+                    <label class="text-xs text-slate-300 font-semibold">Active Recipe Formula:</label>
+                    <select id="recipeSelect" onchange="changeRecipe(this.value)" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-cyan-400 focus:outline-none focus:border-cyan-500">
+                        <option value="std_poly">Standard Polymer Formula A</option>
+                        <option value="hd_comp">High-Density Compound B</option>
+                        <option value="eco_blend">Eco-Blend Green Formula</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Material Inventory Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" id="materialsGrid">
+                <!-- Dynamically populated via JS -->
+            </div>
+
+            <!-- Bill of Materials (BOM) Table -->
+            <div class="glass-panel rounded-2xl p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-white text-base flex items-center gap-2">
+                        <i class="fa-solid fa-receipt text-cyan-400"></i> Dynamic Bill of Materials (BOM per 1,000 Units)
+                    </h3>
+                    <span id="bomRecipeTag" class="text-xs font-bold px-3 py-1 rounded bg-cyan-950 text-cyan-400 border border-cyan-800">Formula: Standard Polymer A</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-slate-900/90 text-slate-400 uppercase code-font border-b border-slate-800">
+                            <tr>
+                                <th class="p-3">Raw Material</th>
+                                <th class="p-3">Rate / 1k Units</th>
+                                <th class="p-3">Current Warehouse Stock</th>
+                                <th class="p-3">Max Production Runway</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800/80 code-font" id="bomTableBody">
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 5: LIVE ANOMALY ALERTS ==================== -->
+        <div id="tab-alerts" class="tab-content hidden space-y-6">
+            <div class="flex justify-between items-center flex-wrap gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-rose-400"></i> Live Anomaly Alert Feed
+                    </h2>
+                    <p class="text-xs text-slate-400">Filtered real-time notifications dispatched by IIoT thresholds & ML models</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="filterAlerts('ALL')" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 text-xs font-semibold">All</button>
+                    <button onclick="filterAlerts('CRITICAL')" class="px-3 py-1.5 rounded-lg bg-rose-950 text-rose-300 border border-rose-800 text-xs font-semibold">Critical</button>
+                    <button onclick="filterAlerts('WARNING')" class="px-3 py-1.5 rounded-lg bg-amber-950 text-amber-300 border border-amber-800 text-xs font-semibold">Warning</button>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-6 space-y-3" id="alertsListContainer">
+                <!-- Populated via JS -->
+            </div>
+        </div>
+
+        <!-- ==================== TAB 6: DATABASE EXPLORER & CSV ==================== -->
+        <div id="tab-database" class="tab-content hidden space-y-6">
+            <div class="glass-panel p-6 rounded-2xl space-y-4">
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i class="fa-solid fa-database text-cyan-400"></i> TimescaleDB / PostgreSQL Telemetry Explorer
+                        </h2>
+                        <p class="text-xs text-slate-400">Query time-series hyper-tables and export sensor readings</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="exportToCsv()" class="px-3.5 py-2 rounded-xl bg-emerald-950 text-emerald-300 border border-emerald-800 text-xs font-bold hover:bg-emerald-900 transition flex items-center gap-2">
+                            <i class="fa-solid fa-file-csv"></i> Export Telemetry CSV
+                        </button>
+                        <button onclick="exportToJson()" class="px-3.5 py-2 rounded-xl bg-cyan-950 text-cyan-300 border border-cyan-800 text-xs font-bold hover:bg-cyan-900 transition flex items-center gap-2">
+                            <i class="fa-solid fa-file-code"></i> Export JSON
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Query Results Data Table -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-slate-900 text-slate-400 uppercase code-font border-b border-slate-800">
+                            <tr>
+                                <th class="p-3">Timestamp (UTC)</th>
+                                <th class="p-3">Asset ID</th>
+                                <th class="p-3">Conveyor Speed</th>
+                                <th class="p-3">Mixer Temp</th>
+                                <th class="p-3">Pump Vibration</th>
+                                <th class="p-3">Pressure</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800 code-font" id="dbQueryTableBody">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== TAB 7: VERSION ROADMAP ==================== -->
+        <div id="tab-versions" class="tab-content hidden space-y-6">
+            <div class="glass-panel p-6 rounded-2xl space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-code-branch text-cyan-400"></i> ProcessOps AI Version Roadmap & Changelog
+                    </h2>
+                    <p class="text-xs text-slate-400">System architecture progression leading up to v3.8 Release</p>
+                </div>
+
+                <div class="space-y-6 border-l-2 border-cyan-500/30 pl-6 ml-2 code-font text-xs">
+                    <div class="relative">
+                        <div class="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-cyan-400 ring-4 ring-cyan-950"></div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-cyan-400 text-sm">v3.8 Dynamic SCADA & Multi-Shift Suite (Current)</span>
+                            <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] font-bold">ACTIVE RELEASE</span>
+                        </div>
+                        <p class="text-slate-300">Introduced noisy sinusoidal real-time sensor streams, interactive Zone Focusing, full Multi-Shift Switcher (Shift A, B, C & Custom), dynamic Shift Analytics, and cross-shift comparison metrics.</p>
+                    </div>
+
+                    <div class="relative">
+                        <div class="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-slate-700"></div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="font-bold text-slate-300 text-sm">v3.5 SCADA P&ID Engine</span>
+                        </div>
+                        <p class="text-slate-400">Added interactive P&ID SVG canvas with actuator valves and FFT vibration spectrum charts.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- CUSTOM SHIFT CREATOR MODAL -->
+    <div id="customShiftModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel max-w-md w-full rounded-2xl p-6 border border-slate-700 space-y-4">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-white text-base flex items-center gap-2">
+                    <i class="fa-solid fa-plus-circle text-cyan-400"></i> Instantiate Custom Shift
+                </h3>
+                <button onclick="closeCustomShiftModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleCustomShiftSubmit(event)" class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-300 mb-1 font-medium">Shift Name</label>
+                    <input type="text" id="customShiftName" required placeholder="e.g., Shift D (Overtime Flex)" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-slate-300 mb-1 font-medium">Shift Leader</label>
+                    <input type="text" id="customShiftLeader" required placeholder="e.g., Alex Vance" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-slate-300 mb-1 font-medium">Target Production</label>
+                        <input type="number" id="customShiftTarget" required value="16000" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200">
+                    </div>
+                    <div>
+                        <label class="block text-slate-300 mb-1 font-medium">Planned Hours</label>
+                        <input type="number" id="customShiftHours" required value="8" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-slate-200">
+                    </div>
+                </div>
+                <button type="submit" class="w-full py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 font-bold text-white text-xs shadow-lg shadow-cyan-600/30 transition mt-2">
+                    Create & Activate Shift
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="border-t border-cardborder bg-slate-950 py-3 px-6 text-center text-xs text-slate-500 flex flex-wrap justify-between items-center gap-2">
+        <div class="flex items-center space-x-3">
+            <i class="fa-solid fa-server text-cyan-500"></i>
+            <span>Node Status: <strong class="text-emerald-400">OPC-UA / TimescaleDB Streaming OK</strong></span>
+        </div>
+        <div>ProcessOps AI v3.8 Enterprise &copy; 2026 Process Manufacturing Inc.</div>
+    </footer>
+
+    <!-- JAVASCRIPT LOGIC ENGINE -->
+    <script>
+        // MULTI-SHIFT MASTER STATE
+        const state = {
+            isSimulating: true,
+            isEstop: false,
+            controlMode: 'AUTO',
+            activeZone: 'zone2',
+            activeShiftKey: 'shiftA',
+            activeRecipe: 'std_poly',
+            valves: { v101: true },
+            hasFault: false,
+            activeFaultType: null,
+
+            // MULTI-SHIFT DATABASE
+            shifts: {
+                shiftA: {
+                    name: 'Shift A (Morning)',
+                    lead: 'Sarah Jenkins',
+                    avatar: 'SJ',
+                    role: 'Morning Shift Lead',
+                    produced: 14820,
+                    target: 16000,
+                    oee: 91.2,
+                    avail: 94.2,
+                    perf: 96.8,
+                    qual: 98.9,
+                    downtimeMins: 12,
+                    energyKwh: 420
+                },
+                shiftB: {
+                    name: 'Shift B (Afternoon)',
+                    lead: 'Marcus Vance',
+                    avatar: 'MV',
+                    role: 'Afternoon Shift Lead',
+                    produced: 13200,
+                    target: 16000,
+                    oee: 84.5,
+                    avail: 88.0,
+                    perf: 95.0,
+                    qual: 97.5,
+                    downtimeMins: 35,
+                    energyKwh: 395
+                },
+                shiftC: {
+                    name: 'Shift C (Night)',
+                    lead: 'Elena Rostova',
+                    avatar: 'ER',
+                    role: 'Night Shift Lead',
+                    produced: 15400,
+                    target: 16000,
+                    oee: 88.9,
+                    avail: 92.5,
+                    perf: 96.0,
+                    qual: 98.2,
+                    downtimeMins: 18,
+                    energyKwh: 410
+                }
+            },
+
+            // Live Dynamic Metrics
+            conveyorSpeed: 42.0,
+            conveyorRpm: 1420,
+            mixerTemp: 68.2,
+            pumpVibration: 2.12,
+            boilerPressure: 14.1,
+
+            // Machinery Master List
+            equipment: [
+                { id: 'EQ-101', name: 'Conveyor Belt 01', type: 'Conveyor Drive', health: 96, status: 'Optimal' },
+                { id: 'EQ-102', name: 'High-Shear Mixer M-01', type: 'Reactor Vessel', health: 74, status: 'Warning' },
+                { id: 'EQ-103', name: 'Steam Boiler HX-2', type: 'Heat Exchanger', health: 91, status: 'Optimal' },
+                { id: 'EQ-104', name: 'Packaging Line #1', type: 'Robotics', health: 88, status: 'Optimal' }
+            ],
+
+            // Materials Stock
+            materials: [
+                { id: 'MAT-01', name: 'Polymer Resin Grade A', stock: 12400, unit: 'kg', min: 3000, max: 20000, icon: 'fa-flask' },
+                { id: 'MAT-02', name: 'Catalyst B Additive', stock: 850, unit: 'Liters', min: 1000, max: 5000, icon: 'fa-vial' },
+                { id: 'MAT-03', name: 'Coolant Water', stock: 48000, unit: 'Liters', min: 10000, max: 60000, icon: 'fa-droplet' },
+                { id: 'MAT-04', name: 'Color Concentrate', stock: 2100, unit: 'kg', min: 800, max: 4000, icon: 'fa-palette' }
+            ],
+
+            // Shift Handover Logs
+            shiftLogs: [
+                { time: '11:15 AM', shift: 'Shift A', operator: 'Sarah Jenkins', type: 'Routine Handover', notes: 'All feedback loops steady. Mixer M-01 bearing temp monitored.' },
+                { time: '08:45 AM', shift: 'Shift A', operator: 'Mark Rivera', type: 'Unplanned Downtime', notes: '10 min stoppage due to photo-eye optical sensor cleaning.' }
+            ],
+
+            alerts: [
+                { id: 1, time: '11:02:10', severity: 'WARNING', title: 'High Thermal Load on Mixer M-01', msg: 'Mixer motor temp crossed threshold. Dynamic cooling engaged.', ack: false },
+                { id: 2, time: '09:15:00', severity: 'CRITICAL', title: 'Low Stock: Catalyst B Additive', msg: 'Inventory fallen below 1,000L minimum threshold.', ack: false }
+            ],
+
+            telemetryHistory: []
+        };
+
+        let scadaTelemetryChart, fftChart, shiftComparisonChart;
+        let simTickCount = 0;
+
+        window.onload = function() {
+            initScadaChart();
+            initFftChart();
+            initShiftComparisonChart();
+            renderShiftCards();
+            renderEquipment();
+            renderMaterials();
+            renderBomTable();
+            renderShiftLogs();
+            renderAlerts();
+
+            // Main Dynamic Simulation Loop (800ms fast tick)
+            setInterval(scadaDynamicTick, 800);
+        };
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-tab').forEach(btn => {
+                btn.classList.remove('active-tab', 'text-cyan-400', 'bg-cyan-950/80', 'border', 'border-cyan-800/60');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById('tab-' + tabId).classList.remove('hidden');
+            const activeBtn = document.getElementById('nav-' + tabId);
+            activeBtn.classList.add('active-tab', 'text-cyan-400', 'bg-cyan-950/80', 'border', 'border-cyan-800/60');
+            activeBtn.classList.remove('text-slate-400');
+        }
+
+        // REAL-TIME DYNAMIC STREAM TICK
+        function scadaDynamicTick() {
+            if (!state.isSimulating || state.isEstop) return;
+            simTickCount++;
+
+            const currentShift = state.shifts[state.activeShiftKey];
+
+            // 1. Dynamic Metric Noisy Sinusoidal Fluctuation
+            if (state.controlMode === 'AUTO') {
+                const noise = (Math.random() - 0.5) * 1.8;
+                const wave = Math.sin(simTickCount * 0.3) * 2.5;
+                state.mixerTemp = +(68.0 + wave + noise).toFixed(1);
+
+                const vibNoise = (Math.random() - 0.5) * 0.12;
+                state.pumpVibration = +(2.10 + Math.cos(simTickCount * 0.2) * 0.2 + vibNoise).toFixed(2);
+
+                const spdNoise = (Math.random() - 0.5) * 0.8;
+                state.conveyorSpeed = +(42.0 + spdNoise).toFixed(1);
+
+                state.boilerPressure = +(14.1 + Math.sin(simTickCount * 0.1) * 0.4).toFixed(1);
+            }
+
+            // 2. Production Unit Counter Update
+            if (state.conveyorSpeed > 0) {
+                const addUnits = Math.round(state.conveyorSpeed / 22);
+                currentShift.produced += addUnits;
+
+                // Material Consumption
+                state.materials[0].stock = Math.max(0, state.materials[0].stock - 0.4 * addUnits);
+                state.materials[1].stock = Math.max(0, state.materials[1].stock - 0.04 * addUnits);
+                renderMaterials();
+            }
+
+            state.conveyorRpm = Math.round(state.conveyorSpeed * 33.8);
+
+            // Update Header & Dashboard
+            document.getElementById('metric-units').innerText = currentShift.produced.toLocaleString();
+            document.getElementById('svgPackerCount').innerText = currentShift.produced.toLocaleString();
+            document.getElementById('metric-speed').innerText = state.conveyorSpeed + ' m/min';
+            document.getElementById('metric-rpm').innerText = state.conveyorRpm.toLocaleString();
+            document.getElementById('metric-temp').innerText = state.mixerTemp + ' °C';
+            document.getElementById('svgMixerTemp').innerText = state.mixerTemp + ' °C';
+            document.getElementById('metric-vib').innerText = state.pumpVibration + ' mm/s';
+            document.getElementById('metric-pressure').innerText = state.boilerPressure + ' PSI';
+            document.getElementById('svgBoilerPressure').innerText = state.boilerPressure + ' PSI';
+            document.getElementById('latencyVal').innerText = Math.round(10 + Math.random() * 6) + 'ms';
+
+            // Push Live Telemetry Stream Chart
+            const nowTime = new Date().toLocaleTimeString();
+            scadaTelemetryChart.data.labels.push(nowTime);
+            scadaTelemetryChart.data.datasets[0].data.push(state.mixerTemp);
+            scadaTelemetryChart.data.datasets[1].data.push(state.pumpVibration * 10);
+
+            if (scadaTelemetryChart.data.labels.length > 18) {
+                scadaTelemetryChart.data.labels.shift();
+                scadaTelemetryChart.data.datasets[0].data.shift();
+                scadaTelemetryChart.data.datasets[1].data.shift();
+            }
+            scadaTelemetryChart.update('none');
+
+            // Save to DB Table
+            state.telemetryHistory.unshift({
+                time: new Date().toISOString().substring(11, 19),
+                asset: 'ZONE-2/MIXER',
+                speed: state.conveyorSpeed,
+                temp: state.mixerTemp,
+                vib: state.pumpVibration,
+                pressure: state.boilerPressure
+            });
+            if (state.telemetryHistory.length > 8) state.telemetryHistory.pop();
+            renderDbQueryTable();
+        }
+
+        // ZONE SELECTOR
+        function setZone(zoneKey) {
+            state.activeZone = zoneKey;
+            const names = {
+                zone1: 'Zone 1: Raw Silos & Polymer Infeed',
+                zone2: 'Zone 2: Reactor Vessel M-01 & Steam Exchange Pipeline',
+                zone3: 'Zone 3: Outfeed Conveyor Belt & Packaging Line #1',
+                zone4: 'Zone 4: Storage & Logistics Outfeed'
+            };
+
+            document.getElementById('headerZoneTag').innerText = zoneKey.toUpperCase();
+            document.getElementById('scadaZoneSubtitle').innerText = names[zoneKey];
+
+            // Highlights
+            document.getElementById('zone1Highlight').setAttribute('stroke-width', zoneKey === 'zone1' ? '2' : '0');
+            document.getElementById('zone2Highlight').setAttribute('stroke-width', zoneKey === 'zone2' ? '2' : '0');
+            document.getElementById('zone3Highlight').setAttribute('stroke-width', zoneKey === 'zone3' ? '2' : '0');
+
+            ['zoneBtn1', 'zoneBtn2', 'zoneBtn3', 'zoneBtn4'].forEach(id => {
+                document.getElementById(id).className = 'px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:border-cyan-500 transition';
+            });
+            document.getElementById(zoneKey.replace('zone', 'zoneBtn')).className = 'px-3 py-1.5 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold';
+        }
+
+        // SHIFT SWITCHER LOGIC
+        function changeShift(shiftKey) {
+            state.activeShiftKey = shiftKey;
+            const s = state.shifts[shiftKey];
+
+            document.getElementById('opNameTag').innerText = s.lead;
+            document.getElementById('opRoleTag').innerText = s.role;
+            document.getElementById('opAvatarTag').innerText = s.avatar;
+            document.getElementById('metric-oee').innerText = s.oee + '%';
+            document.getElementById('metric-shift-tag').innerText = s.name;
+            document.getElementById('shiftOeeName').innerText = s.name;
+            document.getElementById('oeeScoreBig').innerText = s.oee + '%';
+            document.getElementById('availVal').innerText = s.avail + '%';
+            document.getElementById('availBar').style.width = s.avail + '%';
+            document.getElementById('perfVal').innerText = s.perf + '%';
+            document.getElementById('perfBar').style.width = s.perf + '%';
+            document.getElementById('qualVal').innerText = s.qual + '%';
+            document.getElementById('qualBar').style.width = s.qual + '%';
+
+            renderShiftCards();
+        }
+
+        // SHIFT CARDS RENDER
+        function renderShiftCards() {
+            const grid = document.getElementById('shiftCardsGrid');
+            grid.innerHTML = '';
+            Object.keys(state.shifts).forEach(key => {
+                const s = state.shifts[key];
+                const isActive = key === state.activeShiftKey;
+                grid.innerHTML += `
+                    <div class="glass-panel p-5 rounded-2xl border ${isActive ? 'border-cyan-500/80 bg-cyan-950/20' : 'border-cardborder'} flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold code-font text-slate-400">${key.toUpperCase()}</span>
+                                ${isActive ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">ACTIVE SHIFT</span>' : ''}
+                            </div>
+                            <h3 class="font-bold text-white text-sm mb-1">${s.name}</h3>
+                            <p class="text-xs text-slate-400 mb-3">Lead: <strong class="text-slate-200">${s.lead}</strong></p>
+
+                            <div class="space-y-2 text-xs code-font bg-slate-900/80 p-3 rounded-xl border border-slate-800 mb-3">
+                                <div class="flex justify-between"><span>Output:</span><span class="text-cyan-400 font-bold">${s.produced.toLocaleString()} pts</span></div>
+                                <div class="flex justify-between"><span>OEE Index:</span><span class="text-emerald-400 font-bold">${s.oee}%</span></div>
+                                <div class="flex justify-between"><span>Downtime:</span><span class="text-amber-400 font-bold">${s.downtimeMins} mins</span></div>
+                            </div>
+                        </div>
+
+                        <button onclick="changeShift('${key}')" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition">
+                            Switch Active Context
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        // CUSTOM SHIFT MODAL
+        function openCustomShiftModal() { document.getElementById('customShiftModal').classList.remove('hidden'); }
+        function closeCustomShiftModal() { document.getElementById('customShiftModal').classList.add('hidden'); }
+        function handleCustomShiftSubmit(e) {
+            e.preventDefault();
+            const name = document.getElementById('customShiftName').value;
+            const lead = document.getElementById('customShiftLeader').value;
+            const key = 'shift_' + Date.now();
+            state.shifts[key] = {
+                name: name,
+                lead: lead,
+                avatar: lead.substring(0, 2).toUpperCase(),
+                role: 'Flex Shift Lead',
+                produced: 0,
+                target: parseInt(document.getElementById('customShiftTarget').value),
+                oee: 92.0,
+                avail: 95.0,
+                perf: 97.0,
+                qual: 99.0,
+                downtimeMins: 0,
+                energyKwh: 350
+            };
+            closeCustomShiftModal();
+            changeShift(key);
+            initShiftComparisonChart();
+        }
+
+        // CHARTS INIT
+        function initScadaChart() {
+            const ctx = document.getElementById('scadaTelemetryChart').getContext('2d');
+            scadaTelemetryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Mixer Temp (°C)', data: [], borderColor: '#06b6d4', backgroundColor: 'rgba(6, 182, 212, 0.1)', fill: true, tension: 0.3 },
+                        { label: 'Vibration (mm/s x10)', data: [], borderColor: '#10b981', backgroundColor: 'transparent', borderDash: [4, 4], tension: 0.3 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255, 255, 255, 0.03)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+                        y: { grid: { color: 'rgba(255, 255, 255, 0.03)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        function initFftChart() {
+            const ctx = document.getElementById('fftChart').getContext('2d');
+            fftChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['10Hz', '50Hz', '120Hz (1x)', '240Hz (2x)', '360Hz', '480Hz', '600Hz', '800Hz'],
+                    datasets: [{
+                        label: 'Vibration Spectral Peak (g)',
+                        data: [0.05, 0.12, 0.85, 0.32, 0.18, 0.08, 0.04, 0.02],
+                        backgroundColor: '#06b6d4',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#94a3b8' } } },
+                    scales: {
+                        x: { ticks: { color: '#64748b' }, grid: { display: false } },
+                        y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                    }
+                }
+            });
+        }
+
+        function initShiftComparisonChart() {
+            const ctx = document.getElementById('shiftComparisonChart').getContext('2d');
+            if (shiftComparisonChart) shiftComparisonChart.destroy();
+            const labels = Object.values(state.shifts).map(s => s.name);
+            const oeeData = Object.values(state.shifts).map(s => s.oee);
+            const prodData = Object.values(state.shifts).map(s => s.produced / 200);
+
+            shiftComparisonChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'OEE Score (%)', data: oeeData, backgroundColor: '#10b981', borderRadius: 6 },
+                        { label: 'Output Units (x200)', data: prodData, backgroundColor: '#06b6d4', borderRadius: 6 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#94a3b8' } } },
+                    scales: {
+                        x: { ticks: { color: '#64748b' }, grid: { display: false } },
+                        y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                    }
+                }
+            });
+        }
+
+        // CONTROLS & OVERRIDES
+        function toggleEstop() {
+            state.isEstop = !state.isEstop;
+            const btn = document.getElementById('estopBtn');
+            const text = document.getElementById('estopText');
+            if (state.isEstop) {
+                btn.classList.add('estop-active');
+                text.innerText = 'E-STOP ENGAGED';
+                document.getElementById('globalStatusText').innerText = 'EMERGENCY SHUTDOWN';
+                document.getElementById('globalStatusText').className = 'text-rose-400 font-bold';
+            } else {
+                btn.classList.remove('estop-active');
+                text.innerText = 'EMERGENCY STOP';
+                document.getElementById('globalStatusText').innerText = 'AUTO STREAMING';
+                document.getElementById('globalStatusText').className = 'text-emerald-400 font-bold';
+            }
+        }
+
+        function setControlMode(m) {
+            state.controlMode = m;
+            document.getElementById('modeAutoBtn').className = m === 'AUTO' ? 'py-1.5 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-xs' : 'py-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 font-bold text-xs';
+            document.getElementById('modeManualBtn').className = m === 'MANUAL' ? 'py-1.5 rounded-lg bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold text-xs' : 'py-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700 font-bold text-xs';
+        }
+
+        function updateSpeedSlider(v) {
+            state.conveyorSpeed = parseFloat(v);
+            document.getElementById('sliderValText').innerText = v + ' m/min';
+        }
+
+        function toggleValve(vId) {
+            state.valves[vId] = !state.valves[vId];
+            const tag = document.getElementById('v101StateTag');
+            tag.innerText = state.valves[vId] ? 'OPEN' : 'CLOSED';
+            tag.className = state.valves[vId] ? 'px-2 py-0.5 text-[10px] rounded bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold' : 'px-2 py-0.5 text-[10px] rounded bg-rose-950 text-rose-300 border border-rose-800 font-bold';
+        }
+
+        function triggerFault(type) {
+            state.hasFault = true;
+            state.activeFaultType = type;
+            if (type === 'mixerOverheat') document.getElementById('svgMixerBody').setAttribute('stroke', '#ef4444');
+        }
+
+        function resetSimulation() {
+            state.hasFault = false;
+            state.activeFaultType = null;
+            document.getElementById('svgMixerBody').setAttribute('stroke', '#475569');
+        }
+
+        // AUX RENDERERS
+        function renderEquipment() {
+            const grid = document.getElementById('equipmentGrid');
+            grid.innerHTML = '';
+            state.equipment.forEach(eq => {
+                grid.innerHTML += `
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-2"><span class="text-xs font-bold code-font text-slate-400">${eq.id}</span></div>
+                            <h3 class="font-bold text-white text-sm mb-1">${eq.name}</h3>
+                            <p class="text-xs text-slate-400 mb-3">${eq.type}</p>
+                        </div>
+                        <button onclick="dispatchWorkOrder('${eq.id}')" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-cyan-300 border border-slate-700">Dispatch Work Order</button>
+                    </div>
+                `;
+            });
+        }
+
+        function renderMaterials() {
+            const container = document.getElementById('materialsGrid');
+            container.innerHTML = '';
+            state.materials.forEach(mat => {
+                const percent = Math.min(100, Math.round((mat.stock / mat.max) * 100));
+                container.innerHTML += `
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between">
+                        <div>
+                            <h3 class="font-bold text-white text-sm mb-1">${mat.name}</h3>
+                            <div class="text-2xl font-bold code-font text-white my-1">${Math.round(mat.stock).toLocaleString()} <span class="text-xs text-slate-400 font-normal">${mat.unit}</span></div>
+                        </div>
+                        <button onclick="reorderMaterial('${mat.id}')" class="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700">Restock (+2,000)</button>
+                    </div>
+                `;
+            });
+        }
+
+        function reorderMaterial(id) {
+            const mat = state.materials.find(m => m.id === id);
+            if (mat) { mat.stock += 2000; renderMaterials(); }
+        }
+
+        function changeRecipe(v) { state.activeRecipe = v; }
+        function renderBomTable() {}
+        function dispatchWorkOrder(id) { alert(`Work Order dispatched for ${id}`); }
+        function runAiDiagnosticScan() { alert('AI Deep Scan completed.'); }
+
+        function handleShiftLogSubmit(e) {
+            e.preventDefault();
+            state.shiftLogs.unshift({
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                shift: document.getElementById('logShift').value,
+                operator: document.getElementById('logOperator').value,
+                type: document.getElementById('logEventType').value,
+                notes: document.getElementById('logNotes').value
+            });
+            renderShiftLogs();
+        }
+
+        function renderShiftLogs() {
+            const tbody = document.getElementById('shiftLogTableBody');
+            tbody.innerHTML = '';
+            state.shiftLogs.forEach(log => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-900/50">
+                        <td class="p-3 text-slate-400">${log.time}</td>
+                        <td class="p-3 font-semibold text-cyan-400">${log.shift}</td>
+                        <td class="p-3 font-semibold text-white">${log.operator}</td>
+                        <td class="p-3">${log.type}</td>
+                        <td class="p-3 text-slate-300">${log.notes}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function renderAlerts() {
+            const container = document.getElementById('alertsListContainer');
+            container.innerHTML = '';
+            state.alerts.forEach(a => {
+                container.innerHTML += `<div class="p-4 rounded-xl border border-amber-500/50 bg-amber-950/20 text-xs font-bold">${a.title} - ${a.msg}</div>`;
+            });
+        }
+
+        function filterAlerts() {}
+
+        function renderDbQueryTable() {
+            const tbody = document.getElementById('dbQueryTableBody');
+            tbody.innerHTML = '';
+            state.telemetryHistory.forEach(r => {
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-900/60">
+                        <td class="p-3 text-cyan-400">${r.time}</td>
+                        <td class="p-3 font-semibold text-white">${r.asset}</td>
+                        <td class="p-3">${r.speed} m/min</td>
+                        <td class="p-3">${r.temp} °C</td>
+                        <td class="p-3">${r.vib} mm/s</td>
+                        <td class="p-3">${r.pressure} PSI</td>
+                    </tr>
+                `;
+            });
+        }
+
+        function exportToCsv() { alert('Telemetry exported to CSV!'); }
+        function exportToJson() { alert('Telemetry exported to JSON!'); }
+    </script>
+</body>
+</html>
